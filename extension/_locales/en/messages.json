@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "YT Grabber — YouTube downloader"
+  },
+  "extDescription": {
+    "message": "Download YouTube video, audio and subtitles via yt-dlp: quick presets, advanced options, history and folder picker."
+  },
+  "cmdQuick": {
+    "message": "Download the current video with current settings"
+  }
+}

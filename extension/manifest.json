@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "short_name": "YT Grabber",
+  "version": "1.1.0",
+  "description": "__MSG_extDescription__",
+  "default_locale": "en",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApz+qX1kXtwM0Vs8n/lowJgt9CEoc05Ronjcv4RVVP3QNL2w6tvDHA7+f0hNY9bvEjOA3ggX1CQxzdm02Pp36z32BnR/BK9PzXN8kGiUu+TRNFnN3uWagbi9gCsS8Qmlx2ijOItwOW0hqEbGHI+AJhxyAu+o5n82jb5wsqTSstFq5nCQrR1THTubMyetpTZQcRyt9d1gnipeLqbVdSGGQITsxmtbxFVM2armyImmBAW9gYkr3KMRevGUWJj//f2/4YPo9TF6D4oY8h1o+hYIBN/S1LzaEonvRewbnt3Ohgm2ZQO8PD1ZxoEoVDIk1304uW5TdHcsZNiFVYilwSCYJ3wIDAQAB",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "YT Grabber",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "permissions": [
+    "nativeMessaging",
+    "storage",
+    "contextMenus",
+    "notifications",
+    "tabs",
+    "alarms",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://youtu.be/*",
+    "https://api.github.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.youtube.com/*",
+        "*://m.youtube.com/*"
+      ],
+      "js": [
+        "i18n.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "quick-download": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "__MSG_cmdQuick__"
+    }
+  }
+}

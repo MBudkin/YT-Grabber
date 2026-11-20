@@ -1,0 +1,13 @@
+# Local/dev-only artifacts — never publish
+/dist/
+/yt-dlp.exe
+*.exe
+__pycache__/
+*.pyc
+host/config.json
+host/host.log*
+host/ytdl_host.bat
+host/com.ytgrabber.host.json
+*.log
+.env
+.claude/

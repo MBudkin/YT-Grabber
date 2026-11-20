@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>YT Grabber</title>
+  <link rel="stylesheet" href="ui.css">
+  <style>
+    body { padding: 32px 16px 60px; }
+    .wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+    h1 { display: flex; align-items: center; gap: 10px; font-size: 22px; margin: 0 0 4px; }
+    h1 .ver { font-size: 13px; font-weight: 500; color: var(--muted); }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
+    .card h2 { margin: 0; font-size: 15px; }
+    .grid { display: grid; grid-template-columns: 170px 1fr; gap: 8px 12px; align-items: center; }
+    .grid > span { color: var(--muted); }
+    .rowi { display: flex; gap: 6px; } .rowi input { flex: 1; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    pre { background: var(--surface-2); padding: 10px; border-radius: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; font: 12px Consolas, monospace; margin: 0; }
+    code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+    .ok { color: var(--ok); } .bad { color: var(--err); }
+    #language { max-width: 280px; }
+    @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1><img src="icons/icon48.png" width="32" height="32" alt=""> YT Grabber <span class="ver" id="extVersion"></span></h1>
+
+  <section class="card">
+    <h2 data-i18n="language"></h2>
+    <select id="language">
+      <option value="auto" data-i18n="langAuto"></option>
+      <option value="en">English</option>
+      <option value="ru">Русский</option>
+    </select>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="hostStatus"></h2>
+    <div class="grid" id="status">
+      <span data-i18n="helper"></span><b id="stHost" data-i18n="checking"></b>
+      <span>yt-dlp</span><b id="stYtdlp">—</b>
+      <span>ffmpeg</span><b id="stFfmpeg">—</b>
+    </div>
+    <div class="actions">
+      <button id="recheck" class="btn small" data-i18n="recheck"></button>
+      <button id="updateYtdlp" class="btn small" data-i18n="updateYtdlp"></button>
+    </div>
+    <pre id="updateOut" hidden></pre>
+    <div id="installHelp" class="banner" hidden>
+      <span data-i18n-html="installHelp"></span>
+      <span data-i18n="extIdLabel"></span> <code id="extId"></code>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="updates"></h2>
+    <label class="check"><input type="checkbox" id="setAutoUpdate"> <span data-i18n="autoUpdate"></span></label>
+    <label class="check"><input type="checkbox" id="setAutoYtdlp"> <span data-i18n="autoYtdlp"></span></label>
+    <div class="actions">
+      <button id="checkUpdates" class="btn small" data-i18n="checkUpdates"></button>
+      <button id="installUpdate" class="btn primary small" hidden></button>
+      <span id="updateMsg" class="muted"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="paths"></h2>
+    <div class="grid">
+      <span data-i18n="defaultDir"></span>
+      <div class="rowi"><input id="cfgDir"><button id="pickDir" class="btn small" data-i18n="browse"></button></div>
+      <span>yt-dlp.exe</span><input id="cfgYtdlp">
+      <span data-i18n="ffmpegLbl"></span><input id="cfgFfmpeg" data-i18n-placeholder="bundled">
+      <span data-i18n="concurrent"></span>
+      <select id="cfgConcurrent"><option>1</option><option>2</option><option>3</option><option>4</option></select>
+    </div>
+    <div class="actions"><button id="saveCfg" class="btn primary small" data-i18n="save"></button><span id="cfgMsg" class="muted"></span></div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="behavior"></h2>
+    <label class="check"><input type="checkbox" id="setNotify"> <span data-i18n="setNotify"></span></label>
+    <label class="check"><input type="checkbox" id="setButton"> <span data-i18n="setButton"></span></label>
+    <p class="muted" style="margin:0"><span data-i18n-html="behaviorHint"></span>
+      <a href="#" id="shortcuts">chrome://extensions/shortcuts</a></p>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="data"></h2>
+    <div class="actions">
+      <button id="exportBtn" class="btn small" data-i18n="exportSettings"></button>
+      <button id="importBtn" class="btn small" data-i18n="importSettings"></button>
+      <input type="file" id="importFile" accept=".json" hidden>
+      <button id="clearHistory" class="btn small" data-i18n="clearHistory"></button>
+      <button id="resetAll" class="btn small" data-i18n="resetAll"></button>
+    </div>
+    <span id="dataMsg" class="muted"></span>
+  </section>
+</div>
+<script type="module" src="options.js"></script>
+</body>
+</html>

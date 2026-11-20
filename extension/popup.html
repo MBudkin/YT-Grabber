@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>YT Grabber</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="popup">
+  <header class="topbar">
+    <div class="brand">
+      <img src="icons/icon32.png" alt="" width="22" height="22">
+      <span>YT Grabber</span>
+      <span id="hostDot" class="dot" data-i18n-title="hostChecking"></span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="grab" role="tab" data-i18n="tabGrab"></button>
+      <button class="tab" data-tab="jobs" role="tab"><span data-i18n="tabJobs"></span> <span id="jobsCount" class="count" hidden></span></button>
+    </nav>
+    <button id="openOptions" class="icon-btn" data-i18n-title="settings">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>
+    </button>
+  </header>
+
+  <div id="updateBanner" class="banner update" hidden></div>
+  <div id="hostBanner" class="banner" hidden></div>
+
+  <!-- ======================= GRAB ======================= -->
+  <main id="tab-grab" class="pane">
+    <section id="noVideo" class="empty" hidden>
+      <p data-i18n="noVideoPrompt"></p>
+      <form id="urlForm" class="url-form">
+        <input id="urlInput" type="url" placeholder="https://www.youtube.com/watch?v=…" required>
+        <button class="btn" data-i18n="find"></button>
+      </form>
+    </section>
+
+    <section id="videoCard" class="video-card" hidden>
+      <div class="thumb">
+        <img id="vThumb" alt="">
+        <span id="vDur" class="dur"></span>
+      </div>
+      <div class="vmeta">
+        <div id="vTitle" class="vtitle"></div>
+        <div id="vChannel" class="vsub"></div>
+        <div id="vStatus" class="vsub muted"></div>
+      </div>
+    </section>
+
+    <label id="playlistRow" class="pl-row" hidden>
+      <input type="checkbox" id="optPlaylist">
+      <span><span data-i18n="downloadWholePlaylist"></span> <b id="plCount"></b></span>
+    </label>
+
+    <div id="settingsBlock">
+      <div class="seg" id="modeSeg">
+        <button data-mode="video" class="active" data-i18n="modeVideo"></button>
+        <button data-mode="audio" data-i18n="modeAudio"></button>
+      </div>
+
+      <div id="videoOpts">
+        <div class="field-label" data-i18n="quality"></div>
+        <div class="chips" id="qualityChips"></div>
+        <div class="field-label" data-i18n="format"></div>
+        <div class="chips" id="containerChips">
+          <button data-v="mp4">MP4</button><button data-v="mkv">MKV</button><button data-v="webm">WEBM</button>
+        </div>
+      </div>
+
+      <div id="audioOpts" hidden>
+        <div class="field-label" data-i18n="audioFormat"></div>
+        <div class="chips" id="audioChips">
+          <button data-v="mp3">MP3</button><button data-v="m4a">M4A</button><button data-v="opus">OPUS</button>
+          <button data-v="flac">FLAC</button><button data-v="wav">WAV</button><button data-v="best" data-i18n="original"></button>
+        </div>
+      </div>
+
+      <div class="row-between subs-row">
+        <label class="switch"><input type="checkbox" id="optSubs"><span></span> <b data-i18n="subtitles"></b></label>
+        <div class="chips small" id="subLangChips"></div>
+      </div>
+
+      <div class="folder-row">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4l2 2h7A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg>
+        <select id="folderSelect" data-i18n-title="folderTitle"></select>
+        <button id="pickFolder" class="btn ghost small" data-i18n="browse"></button>
+      </div>
+
+      <details id="advanced" class="advanced">
+        <summary data-i18n="advanced"></summary>
+
+        <fieldset>
+          <legend data-i18n="legendFormat"></legend>
+          <label class="check"><input type="checkbox" id="optCompat"> <span data-i18n="optCompat"></span></label>
+          <label class="check"><input type="checkbox" id="optFps60"> <span data-i18n="optFps60"></span></label>
+          <label class="check"><input type="checkbox" id="optVideoOnly"> <span data-i18n="optVideoOnly"></span></label>
+          <label class="lbl"><span data-i18n="optFormatId"></span>
+            <select id="optFormatId"><option value="" data-i18n="formatAuto"></option></select>
+          </label>
+          <label class="lbl" id="audioQualityRow"><span data-i18n="audioBitrate"></span>
+            <select id="optAudioQuality">
+              <option value="0" data-i18n="abrMax"></option><option value="320K">320 kbps</option>
+              <option value="256K">256 kbps</option><option value="192K">192 kbps</option>
+              <option value="128K">128 kbps</option><option value="96K">96 kbps</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend data-i18n="legendSubs"></legend>
+          <label class="check"><input type="checkbox" id="optSubAuto"> <span data-i18n="optSubAuto"></span></label>
+          <label class="check"><input type="checkbox" id="optSubEmbed"> <span data-i18n="optSubEmbed"></span></label>
+          <label class="lbl"><span data-i18n="optSubLangs"></span>
+            <input id="optSubLangs" type="text" placeholder="ru,en">
+          </label>
+          <label class="lbl"><span data-i18n="subFormat"></span>
+            <select id="optSubFormat"><option value="srt">SRT</option><option value="vtt">VTT</option><option value="ass">ASS</option></select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend data-i18n="legendSection"></legend>
+          <div class="two">
+            <label class="lbl"><span data-i18n="start"></span><input id="optStart" type="text" placeholder="0:00"></label>
+            <label class="lbl"><span data-i18n="end"></span><input id="optEnd" type="text" data-i18n-placeholder="endPh"></label>
+          </div>
+          <button id="useCurrentTime" class="btn ghost small" type="button" data-i18n="useCurrentTime"></button>
+        </fieldset>
+
+        <fieldset>
+          <legend data-i18n="legendSponsor"></legend>
+          <div id="sponsorList" class="check-grid"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend data-i18n="legendMeta"></legend>
+          <label class="check"><input type="checkbox" id="optEmbedThumb"> <span data-i18n="optEmbedThumb"></span></label>
+          <label class="check"><input type="checkbox" id="optEmbedMeta"> <span data-i18n="optEmbedMeta"></span></label>
+          <label class="check"><input type="checkbox" id="optEmbedChapters"> <span data-i18n="optEmbedChapters"></span></label>
+          <label class="check"><input type="checkbox" id="optSplitChapters"> <span data-i18n="optSplitChapters"></span></label>
+          <label class="check"><input type="checkbox" id="optWriteThumb"> <span data-i18n="optWriteThumb"></span></label>
+          <label class="check"><input type="checkbox" id="optWriteDesc"> <span data-i18n="optWriteDesc"></span></label>
+          <label class="check"><input type="checkbox" id="optWriteInfo"> <span data-i18n="optWriteInfo"></span></label>
+          <label class="lbl"><span data-i18n="optTemplate"></span>
+            <input id="optTemplate" type="text">
+          </label>
+          <label class="check"><input type="checkbox" id="optRestrict"> <span data-i18n="optRestrict"></span></label>
+          <label class="check"><input type="checkbox" id="optNoOverwrite"> <span data-i18n="optNoOverwrite"></span></label>
+        </fieldset>
+
+        <fieldset>
+          <legend data-i18n="legendNet"></legend>
+          <label class="lbl"><span data-i18n="optItems"></span><input id="optItems" type="text" data-i18n-placeholder="itemsPh"></label>
+          <label class="lbl"><span data-i18n="optRate"></span><input id="optRate" type="text" data-i18n-placeholder="ratePh"></label>
+          <label class="lbl"><span data-i18n="optFragments"></span>
+            <select id="optFragments"><option>1</option><option>2</option><option>4</option><option>8</option><option>16</option></select>
+          </label>
+          <label class="lbl"><span data-i18n="optCookies"></span>
+            <select id="optCookies"><option value="" data-i18n="cookiesNone"></option><option value="chrome">Chrome</option><option value="edge">Edge</option><option value="firefox">Firefox</option><option value="brave">Brave</option></select>
+          </label>
+          <label class="lbl"><span data-i18n="optExtra"></span><input id="optExtra" type="text" placeholder="--limit-rate 1M --retries 5"></label>
+        </fieldset>
+        <button id="resetAdvanced" class="btn ghost small" type="button" data-i18n="resetDefaults"></button>
+      </details>
+    </div>
+
+    <div class="sticky-footer">
+      <button id="downloadBtn" class="btn primary big" disabled>
+        <span id="dlMain" data-i18n="download"></span>
+        <span id="dlSub" class="dl-sub"></span>
+      </button>
+    </div>
+  </main>
+
+  <!-- ======================= JOBS ======================= -->
+  <main id="tab-jobs" class="pane" hidden>
+    <section>
+      <div class="section-head">
+        <h3 data-i18n="active"></h3>
+        <button id="clearFinished" class="link-btn" data-i18n="clearFinished"></button>
+      </div>
+      <div id="jobsList" class="list"></div>
+      <div id="jobsEmpty" class="empty small" data-i18n="jobsEmpty"></div>
+    </section>
+    <section>
+      <div class="section-head">
+        <h3 data-i18n="recent"></h3>
+        <input id="historySearch" type="search" data-i18n-placeholder="search" class="mini-search">
+      </div>
+      <div id="historyList" class="list"></div>
+      <div id="historyEmpty" class="empty small" data-i18n="historyEmpty"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
