@@ -65,7 +65,7 @@ for _k, _v in _defaults.items():
 _sys32 = os.path.join(_root, "System32")
 if _sys32.lower() not in ENV.get("PATH", "").lower():
     ENV["PATH"] = _sys32 + ";" + _root + (";" + ENV["PATH"] if ENV.get("PATH") else "")
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 REPO = "MBudkin/YT-Grabber"
 LOCAL = threading.local()               # per-thread UI language of the current request/job
 UPDATING = threading.Event()            # set while a self-update is downloading; blocks new jobs
@@ -75,6 +75,7 @@ MAX_UNPACKED_BYTES = 1536 * 1024 * 1024
 UPDATE_HOSTS = ("github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com")
 EN = {
     "Некорректная конфигурация": "Invalid configuration",
+    "HTTP 403. Повторно запрашиваем ссылки на медиапотоки.": "HTTP 403. Requesting fresh media URLs.",
     "maxConcurrent должен быть положительным целым числом": "maxConcurrent must be a positive integer",
     "Некорректное поле конфигурации": "Invalid configuration field",
     "Ответ превышает 1 МБ": "Response exceeds 1 MB",
@@ -377,7 +378,8 @@ def argv(config, url, opts, work):
         args += ["-S", ",".join(sort)]
     subs = get("subtitles") or {}
     if subs.get("enabled"):
-        args += ["--write-subs", "--sub-langs", ",".join(subs.get("langs") or ["en"])]
+        args += ["--write-subs", "--sleep-subtitles", "5",
+                 "--sub-langs", ",".join(subs.get("langs") or ["en"])]
         if subs.get("auto"):
             args.append("--write-auto-subs")
         if subs.get("format"):
@@ -425,6 +427,10 @@ def progress(stage, values=None):
     return data
 
 
+class MediaForbidden(ValueError):
+    pass
+
+
 class Job:
     def __init__(self, request, config):
         self.id = uuid.uuid4().hex
@@ -453,47 +459,61 @@ class Job:
         opts = self.request.get("options") or {}
         folder = Path(opts.get("outputDir") or self.config["defaultDir"]).resolve()
         folder.mkdir(parents=True, exist_ok=True)
-        files = []
-        last = error = title = ""
         with tempfile.TemporaryDirectory(prefix=".ytgrabber-", dir=folder) as tmp:
             args = argv(self.config, self.request["url"], opts, Path(tmp))
-            with STATE:
-                if self.cancelled:
-                    return {}
-                proc = self.process = launch(args)
-            try:
-                with proc.stdout:
-                    for raw in proc.stdout:
-                        line = raw.strip()
-                        if line.startswith("__P__"):
-                            self.report("downloading", line[5:].split("|"))
-                        elif line.startswith("__F__"):
-                            path = Path(json.loads(line[5:])).resolve()
-                            if not path.is_relative_to(folder) or not path.is_file():
-                                raise ValueError(tr("yt-dlp сообщил недопустимый путь к файлу"))
-                            if str(path) not in files:
-                                files.append(str(path))
-                        elif line.startswith("__T__"):
-                            title = json.loads(line[5:])
-                        elif line:
-                            last = line
-                            if "ERROR:" in line:
-                                error = line
-                            if line.startswith("[Merger]"):
-                                self.report("merging")
-                            elif line.startswith(("[ExtractAudio]", "[EmbedSubtitle", "[FFmpeg", "[SponsorBlock]",
-                                                  "[ModifyChapters]", "[Metadata]", "[EmbedThumbnail]", "[VideoRemuxer]")):
-                                self.report("postprocessing")
-                            if time.monotonic() - self.last_log >= .25:
-                                self.event("log", line=line[-4000:])
-                                self.last_log = time.monotonic()
-                if proc.wait():
-                    raise ValueError((error or last or tr("Ошибка yt-dlp"))[-4000:])
-            finally:
-                if proc.poll() is None:
-                    kill(proc)
-                    proc.wait()
-                forget(proc)
+            for attempt in range(3):
+                try:
+                    return self.download_attempt(args, folder)
+                except MediaForbidden:
+                    if opts.get("playlist") or attempt == 2 or self.cancelled:
+                        raise
+                    if attempt == 0:
+                        args.insert(1, "--check-formats")
+                    self.event("log", line=tr("HTTP 403. Повторно запрашиваем ссылки на медиапотоки."))
+
+    def download_attempt(self, args, folder):
+        files = []
+        last = error = title = ""
+        with STATE:
+            if self.cancelled:
+                return {}
+            proc = self.process = launch(args)
+        try:
+            with proc.stdout:
+                for raw in proc.stdout:
+                    line = raw.strip()
+                    if line.startswith("__P__"):
+                        self.report("downloading", line[5:].split("|"))
+                    elif line.startswith("__F__"):
+                        path = Path(json.loads(line[5:])).resolve()
+                        if not path.is_relative_to(folder) or not path.is_file():
+                            raise ValueError(tr("yt-dlp сообщил недопустимый путь к файлу"))
+                        if str(path) not in files:
+                            files.append(str(path))
+                    elif line.startswith("__T__"):
+                        title = json.loads(line[5:])
+                    elif line:
+                        last = line
+                        if "ERROR:" in line:
+                            error = line
+                        if line.startswith("[Merger]"):
+                            self.report("merging")
+                        elif line.startswith(("[ExtractAudio]", "[EmbedSubtitle", "[FFmpeg", "[SponsorBlock]",
+                                              "[ModifyChapters]", "[Metadata]", "[EmbedThumbnail]", "[VideoRemuxer]")):
+                            self.report("postprocessing")
+                        if time.monotonic() - self.last_log >= .25:
+                            self.event("log", line=line[-4000:])
+                            self.last_log = time.monotonic()
+            if proc.wait():
+                message = (error or last or tr("Ошибка yt-dlp"))[-4000:]
+                if "unable to download video data: http error 403" in message.lower():
+                    raise MediaForbidden(message)
+                raise ValueError(message)
+        finally:
+            if proc.poll() is None:
+                kill(proc)
+                proc.wait()
+            forget(proc)
         if not files:
             raise ValueError(tr("yt-dlp не сообщил путь к файлу"))
         return dict(type="done", files=files, title=title or Path(files[-1]).stem)
