@@ -39,6 +39,7 @@ function connect() {
     for (const j of jobs.values()) {
       if (j.status === "running" || j.status === "queued") {
         Object.assign(j, { status: "error", error: lastHostError, finishedAt: Date.now() });
+        addHistory(j).catch(console.error);
       }
     }
     changed();
@@ -138,13 +139,15 @@ function onHostMessage(msg) {
       scheduleIdle();
       break;
     case "error":
-      Object.assign(j, { status: "error", error: msg.message || t("errUnknown"), finishedAt: Date.now() });
+      Object.assign(j, { status: "error", error: msg.message || t("errUnknown"), files: msg.files || [], finishedAt: Date.now() });
+      addHistory(j).catch(console.error);
       notify(j, t("notifError"), (j.title ? j.title + "\n" : "") + j.error);
       changed();
       scheduleIdle();
       break;
     case "cancelled":
       Object.assign(j, { status: "cancelled", finishedAt: Date.now() });
+      addHistory(j).catch(console.error);
       changed();
       scheduleIdle();
       break;
@@ -173,15 +176,16 @@ function jobList() {
 }
 
 function loadJobs() {
-  return jobsReady ??= chrome.storage.session.get("jobs").then(({ jobs: saved }) => {
+  return jobsReady ??= chrome.storage.session.get("jobs").then(async ({ jobs: saved }) => {
     for (const j of saved || []) {
       if (isActive(j)) {
         Object.assign(j, { status: "error", error: t("errInterrupted"),
           finishedAt: Date.now() });
       }
       jobs.set(j.jobId, j);
+      if (!j.archived && j.status !== "done") await addHistory(j);
     }
-    updateBadge();
+    changed();
   });
 }
 
@@ -211,9 +215,17 @@ function updateHistory(transform) {
 function addHistory(j) {
   const entry = {
     key: j.jobId, url: j.url, videoId: j.videoId, title: j.title, thumbnail: j.thumbnail,
-    files: j.files, label: j.label, options: j.options, date: Date.now()
+    status: j.status, error: j.error, files: j.files || [], label: j.label, options: j.options, date: j.finishedAt
   };
-  return updateHistory(history => [entry, ...history.filter(h => h.key !== j.jobId)].slice(0, HISTORY_LIMIT));
+  return updateHistory(history => [entry, ...history.filter(h => h.key !== j.jobId)]
+    .sort((a, b) => b.date - a.date).slice(0, HISTORY_LIMIT)).then(() => {
+    j.archived = true;
+    for (const old of jobList().filter(job => !isActive(job)).slice(HISTORY_LIMIT)) {
+      jobs.delete(old.jobId);
+      logs.delete(old.jobId);
+    }
+    changed();
+  });
 }
 
 function updateSettings(patch, replace = false) {
@@ -302,8 +314,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           if (jobs.has(id) && !isActive(jobs.get(id))) { jobs.delete(id); logs.delete(id); }
         }
         changed(); return { ok: true };
-      case "removeHistory": return updateHistory(history => history.filter(h => h.key !== msg.key));
-      case "clearHistory": return updateHistory(() => []);
+      case "removeHistory":
+      case "clearHistory":
+        for (const j of jobs.values()) {
+          if (!isActive(j) && (msg.action === "clearHistory" || j.jobId === msg.key)) {
+            jobs.delete(j.jobId); logs.delete(j.jobId);
+          }
+        }
+        changed();
+        return updateHistory(history => msg.action === "clearHistory" ? [] : history.filter(h => h.key !== msg.key));
       case "saveSettings": return updateSettings(msg.patch, msg.replace);
       case "logs": return { lines: logs.get(msg.jobId) || [] };
       case "state": {

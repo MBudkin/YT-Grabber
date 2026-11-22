@@ -50,5 +50,7 @@ class DownloadVariantsTest(unittest.TestCase):
                                      "-show_streams", "-of", "json", file]))["streams"]
                 self.assertEqual(streams[0]["height"], height)
                 self.assertEqual(sum(s["codec_type"] == "subtitle" for s in streams), count)
+            before = set(folder.iterdir())
             with self.assertRaisesRegex(ValueError, "ru"):
                 download(720, ["en", "ru"])
+            self.assertEqual(set(folder.iterdir()), before)

@@ -13,6 +13,8 @@ let hostInfo = null;         // pong
 let activeTab = null;
 let history = [];
 let starting = false;
+let infoFailed = false;
+let sessionJobs = [];
 
 // ------------------------------------------------------------ messaging
 async function bg(msg) {
@@ -44,7 +46,6 @@ async function init() {
   const state = await bg({ action: "state" }).catch(() => ({ jobs: [], history: [] }));
   history = state.history || [];
   renderJobs(state.jobs || []);
-  renderHistory();
 
   [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const yt = activeTab?.url && parseYouTube(activeTab.url);
@@ -76,7 +77,7 @@ function showBanner(html) { const b = $("#hostBanner"); b.innerHTML = html; b.hi
 
 // ------------------------------------------------------------ target video
 async function setTarget(yt, pageTitle) {
-  target = yt; info = null;
+  target = yt; info = null; infoFailed = false;
   $("#noVideo").hidden = true;
   $("#videoCard").hidden = false;
   const title = pageTitle?.replace(/ - YouTube$/, "").replace(/^\(\d+\)\s*/, "");
@@ -106,6 +107,7 @@ async function setTarget(yt, pageTitle) {
   } catch (e) {
     if (target !== yt) return;
     $("#vTitle").classList.remove("skeleton");
+    infoFailed = true;
     if (!title) $("#vTitle").textContent = yt.url;
     $("#vStatus").textContent = t("formatsFailed", e.message);
   }
@@ -195,18 +197,13 @@ function bindControls() {
   };
   $("#downloadBtn").onclick = download;
 
-  $("#clearFinished").onclick = async () => {
-    const st = await bg({ action: "state" });
-    const ids = st.jobs.filter(j => !["running", "queued"].includes(j.status)).map(j => j.jobId);
-    await bg({ action: "dismiss", jobIds: ids });
-  };
-  $("#historySearch").oninput = renderHistory;
+  $("#historySearch").oninput = () => renderJobs(sessionJobs);
 
   chrome.runtime.onMessage.addListener(msg => {
     if (msg.event === "jobs") renderJobs(msg.jobs);
   });
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.history) { history = changes.history.newValue || []; renderHistory(); }
+    if (area === "local" && changes.history) { history = changes.history.newValue || []; renderJobs(sessionJobs); }
     if (area === "local" && (changes.update || changes.updateState)) renderUpdate();
     // The helper was blocked while an update installed; recheck once the install gate clears.
     const st = changes.updateState?.newValue?.status;
@@ -245,7 +242,7 @@ function renderControls() {
   // The visible set and its order depend only on the video (and on the UI language), never on
   // the current selection, so toggling a chip doesn't move it. Selected languages that don't fit
   // into the first slots are appended at the end in the same stable order.
-  const avail = info ? new Set([...(info.subtitles || []), ...(opts.subtitles.auto ? info.autoCaptions || [] : [])].map(s => s.lang)) : null;
+  const avail = availableLanguages();
   const selected = opts.subtitles.langs;
   const preferred = I18N.lang === "ru" ? ["ru", "en"] : ["en", "ru"];
   const known = [...new Set([...preferred, ...SUB_LANGS.map(([c]) => c)])];
@@ -259,7 +256,7 @@ function renderControls() {
   if (renderControls.extrasKey !== extrasKey) { renderControls.extrasKey = extrasKey; renderControls.extras = []; }
   const extras = renderControls.extras;
   for (const c of [...known, ...selected]) if (selected.includes(c) && !base.includes(c) && !extras.includes(c)) extras.push(c);
-  const langs = [...base, ...extras];
+  const langs = avail ? [...base, ...extras].filter(code => avail.has(code)) : [];
   $("#subLangChips").replaceChildren(...langs.map(l => {
     const manual = info?.subtitles?.some(s => s.lang === l);
     const chip = document.createElement("button");
@@ -343,13 +340,33 @@ function estimateSize() {
   return video?.acodec === "none" && opts.mode !== "video_only" ? combinedSize(video) : size(video);
 }
 
+function availableLanguages() {
+  if (!info || target?.kind === "playlist") return null;
+  const codes = key => info[key + "Codes"] || (info[key] || []).map(track => track.lang);
+  return new Set([...codes("subtitles"), ...(opts.subtitles.auto ? codes("autoCaptions") : [])]);
+}
+
+function subtitleProblem(playlist) {
+  if (!opts.subtitles.enabled || playlist) return "";
+  if (!opts.subtitles.langs.length) return t("subPick");
+  const available = availableLanguages();
+  if (!available) return t(infoFailed ? "subUnknown" : "subChecking");
+  const missing = opts.subtitles.langs.filter(code => code === "all" ? !available.size :
+    /^[\w-]+$/.test(code) && !code.startsWith("-") && !available.has(code));
+  return missing.length ? t("subMissing", missing.join(", ")) : "";
+}
+
 function updateDownloadBtn() {
   const btn = $("#downloadBtn");
   const playlist = target?.kind === "playlist" || !!(opts.playlist && target?.playlistId);
-  btn.disabled = !target || !hostInfo || starting;
+  const problem = target ? subtitleProblem(playlist) : "";
+  $("#subStatus").hidden = !problem;
+  $("#subStatus").textContent = problem;
+  btn.disabled = !target || !hostInfo || starting || !!problem || (!!opts.formatId && !info && !playlist);
   $("#dlMain").textContent = t(playlist ? "downloadPlaylistBtn" : "download");
   const size = estimateSize();
-  $("#dlSub").textContent = describeOptions({ ...opts, playlist }) + (!playlist && size ? " · ≈" + fmtBytes(size) : "");
+  $("#dlSub").textContent = describeOptions({ ...opts, playlist, subtitles: problem ? { enabled: false } : opts.subtitles })
+    + (!playlist && size ? " · ≈" + fmtBytes(size) : "");
 }
 
 function switchTab(name) {
@@ -394,7 +411,8 @@ async function download() {
   if (!target || starting) return;
   const usePlaylist = target.kind === "playlist" || !!(opts.playlist && target.playlistId);
   const url = usePlaylist ? (target.playlistUrl || target.url) : target.url;
-  const options = { ...opts, playlist: usePlaylist };
+  if (!hostInfo || subtitleProblem(usePlaylist) || (opts.formatId && !info && !usePlaylist)) return;
+  const options = structuredClone({ ...opts, playlist: usePlaylist });
   starting = true;
   updateDownloadBtn();
   try {
@@ -423,18 +441,27 @@ const ICONS = {
 };
 const STAGES = { queued: "stQueued", downloading: "stDownloading", merging: "stMerging", postprocessing: "stPostprocessing" };
 
-function renderJobs(jobs) {
-  const active = jobs.filter(j => ["running", "queued"].includes(j.status)).length;
+function renderJobs(live) {
+  sessionJobs = live;
+  const records = new Map(history.map(h => [h.key, { ...h, jobId: h.key, status: h.status || "done", finishedAt: h.date }]));
+  for (const j of live) {
+    if (["running", "queued"].includes(j.status) || records.has(j.jobId) || (!j.archived && j.status !== "done"))
+      records.set(j.jobId, j);
+  }
+  const active = live.filter(j => ["running", "queued"].includes(j.status)).length;
   $("#jobsCount").hidden = !active; $("#jobsCount").textContent = active;
+  const q = $("#historySearch").value.trim().toLowerCase();
+  const jobs = [...records.values()].filter(j => !q || (j.title || "").toLowerCase().includes(q))
+    .sort((a, b) => (b.finishedAt || b.startedAt) - (a.finishedAt || a.startedAt));
   $("#jobsEmpty").hidden = jobs.length > 0;
-  $("#clearFinished").hidden = !jobs.some(j => !["running", "queued"].includes(j.status));
+  $("#jobsEmpty").textContent = t(q ? "nothingFound" : "historyEmpty");
   $("#jobsList").innerHTML = jobs.map(j => {
     const running = ["running", "queued"].includes(j.status);
     const indet = running && (j.stage !== "downloading" || j.percent == null);
     let meta;
     if (j.status === "done") meta = `<span class="status-ok">${t("done")}</span>`;
     else if (j.status === "cancelled") meta = `<span>${t("cancelled")}</span>`;
-    else if (j.status === "error") meta = `<span class="status-err">${t("error")}</span>`;
+    else if (j.status === "error") meta = `<span class="status-err">${t(j.files?.length ? "savedWithError" : "error")}</span>`;
     else meta = `<span>${t(STAGES[j.stage] || "stDownloading")}${j.item ? " " + escapeHtml(j.item) : ""}</span>` +
       (j.stage === "downloading" && j.percent != null ? `<span>${j.percent.toFixed(1)}%</span>` : "") +
       (j.speed ? `<span>${escapeHtml(j.speed)}</span>` : "") + (j.eta ? `<span>${escapeHtml(t("left", j.eta))}</span>` : "");
@@ -442,14 +469,15 @@ function renderJobs(jobs) {
       <img class="ithumb" src="${escapeHtml(j.thumbnail || "icons/icon128.png")}" alt="">
       <div class="ibody">
         <div class="ititle" title="${escapeHtml(j.title)}">${escapeHtml(j.title)}</div>
-        <div class="imeta">${meta}<span>${escapeHtml(j.options ? describeOptions(j.options) : j.label || "")}</span></div>
+        <div class="imeta">${meta}${j.finishedAt ? `<span>${fmtDate(j.finishedAt)}</span>` : ""}<span>${escapeHtml(j.options ? describeOptions(j.options) : j.label || "")}</span></div>
         ${running ? `<div class="bar ${indet ? "indet" : ""}"><i style="width:${j.percent || 0}%"></i></div>` : ""}
         ${j.status === "error" ? `<div class="ierr" title="${escapeHtml(j.error)}">${escapeHtml(j.error)}</div>` : ""}
       </div>
       <div class="iact">
-        ${j.status === "done" && j.files?.length ? `<button data-act="open" title="${t("actOpen")}">${ICONS.play}</button><button data-act="reveal" title="${t("actReveal")}">${ICONS.folder}</button>` : ""}
-        ${["error", "cancelled"].includes(j.status) ? `<button data-act="retry" title="${t("actRetry")}">${ICONS.retry}</button>` : ""}
-        <button data-act="log" title="${t("actLog")}">${ICONS.log}</button>
+        ${j.files?.length ? `<button data-act="open" title="${t("actOpen")}">${ICONS.play}</button><button data-act="reveal" title="${t("actReveal")}">${ICONS.folder}</button>` : ""}
+        ${!running ? `<button data-act="retry" title="${t("actRetry")}">${ICONS.retry}</button>` : ""}
+        ${!running ? `<button data-act="page" title="${t("actPage")}">${ICONS.link}</button>` : ""}
+        ${live.some(item => item.jobId === j.jobId) ? `<button data-act="log" title="${t("actLog")}">${ICONS.log}</button>` : ""}
         <button data-act="${running ? "cancel" : "dismiss"}" title="${t(running ? "actCancel" : "actDismiss")}">${ICONS.x}</button>
       </div></div>`;
   }).join("");
@@ -460,11 +488,12 @@ function renderJobs(jobs) {
     try {
       switch (b.dataset.act) {
         case "cancel": await bg({ action: "cancel", jobId: id }); break;
-        case "dismiss": await bg({ action: "dismiss", jobIds: [id] }); break;
+        case "dismiss": await bg({ action: "removeHistory", key: id }); break;
+        case "page": await chrome.tabs.create({ url: j.url }); break;
         case "open": await host({ cmd: "open_file", path: j.files[0] }); break;
         case "reveal": await host({ cmd: "reveal", path: j.files[0] }); break;
         case "retry": await bg({ action: "download", url: j.url, options: j.options, meta: { title: j.title, thumbnail: j.thumbnail } });
-          await bg({ action: "dismiss", jobIds: [id] }); break;
+          break;
         case "log": {
           const { lines } = await bg({ action: "logs", jobId: id });
           const w = window.open("", "_blank", "width=720,height=480");
@@ -473,40 +502,6 @@ function renderJobs(jobs) {
         }
       }
     } catch (err) { toast(err.message, 4000); }
-  };
-}
-
-function renderHistory() {
-  const q = $("#historySearch").value.trim().toLowerCase();
-  const list = history.filter(h => !q || (h.title || "").toLowerCase().includes(q));
-  $("#historyEmpty").hidden = list.length > 0;
-  $("#historyEmpty").textContent = t(history.length ? "nothingFound" : "historyEmpty");
-  $("#historyList").innerHTML = list.map(h => `
-    <div class="item" data-key="${escapeHtml(h.key)}">
-      <img class="ithumb" src="${escapeHtml(h.thumbnail || "icons/icon128.png")}" alt="">
-      <div class="ibody">
-        <div class="ititle" title="${escapeHtml(h.title)}">${escapeHtml(h.title)}</div>
-        <div class="imeta"><span>${fmtDate(h.date)}</span><span>${escapeHtml(h.options ? describeOptions(h.options) : h.label || "")}</span></div>
-      </div>
-      <div class="iact">
-        ${h.files?.length ? `<button data-act="open" title="${t("actOpenFile")}">${ICONS.play}</button><button data-act="reveal" title="${t("actReveal")}">${ICONS.folder}</button>` : ""}
-        <button data-act="page" title="${t("actPage")}">${ICONS.link}</button>
-        <button data-act="again" title="${t("actAgain")}">${ICONS.retry}</button>
-        <button data-act="remove" title="${t("actRemove")}">${ICONS.x}</button>
-      </div></div>`).join("");
-  $("#historyList").onclick = async e => {
-    const b = e.target.closest("button[data-act]"); if (!b) return;
-    const key = b.closest("[data-key]").dataset.key;
-    const h = history.find(x => x.key === key);
-    try {
-      switch (b.dataset.act) {
-        case "open": await host({ cmd: "open_file", path: h.files[0] }); break;
-        case "reveal": await host({ cmd: "reveal", path: h.files[0] }); break;
-        case "page": chrome.tabs.create({ url: h.url }); break;
-        case "again": await bg({ action: "download", url: h.url, options: h.options, meta: { title: h.title, thumbnail: h.thumbnail } }); toast(t("added")); break;
-        case "remove": await bg({ action: "removeHistory", key }); break;
-      }
-    } catch (err) { toast(/not exist|не найден|No such|cannot find/i.test(err.message) ? t("fileMissing") : err.message, 4000); }
   };
 }
 

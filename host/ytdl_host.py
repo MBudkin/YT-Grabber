@@ -65,7 +65,7 @@ for _k, _v in _defaults.items():
 _sys32 = os.path.join(_root, "System32")
 if _sys32.lower() not in ENV.get("PATH", "").lower():
     ENV["PATH"] = _sys32 + ";" + _root + (";" + ENV["PATH"] if ENV.get("PATH") else "")
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 REPO = "MBudkin/YT-Grabber"
 LOCAL = threading.local()               # per-thread UI language of the current request/job
 UPDATING = threading.Event()            # set while a self-update is downloading; blocks new jobs
@@ -246,10 +246,11 @@ def metadata(data):
         result["formats"].append(row)
     for key, name in (("subtitles", "subtitles"), ("automatic_captions", "autoCaptions")):
         tracks = data.get(key) or {}
-        langs = list(tracks)
+        langs = [lang for lang in tracks if lang != "live_chat" and tracks[lang]]
+        result[name + "Codes"] = langs
         if name == "autoCaptions":
             common = {data.get("language"), "en", "ru", "uk", "de", "fr", "es"}
-            langs = sorted(langs, key=lambda lang: lang.split("-")[0] not in common)[:30]
+            langs = sorted(langs, key=lambda lang: lang.split("-")[0] not in common)
         result[name] = [dict(lang=lang, name=next((t["name"][:512] for t in tracks[lang]
                                                   if t.get("name")), lang)) for lang in langs]
     result["chapters"] = len(data.get("chapters") or [])
@@ -459,6 +460,7 @@ class Job:
         self.request = request
         self.config = config
         self.cancelled = False
+        self.files = []
         self.process = None
         self.last_progress = self.last_log = float("-inf")
         self.stage = None
@@ -494,7 +496,7 @@ class Job:
                     self.event("log", line=tr("HTTP 403. Повторно запрашиваем ссылки на медиапотоки."))
 
     def download_attempt(self, args, folder):
-        files = []
+        files = self.files
         last = error = title = ""
         with STATE:
             if self.cancelled:
@@ -546,7 +548,7 @@ class Job:
         try:
             result = self.download()
         except Exception as exc:
-            result = dict(type="error", message=str(exc))
+            result = dict(type="error", message=str(exc), files=self.files)
         with STATE:
             try:
                 logger.info("Job %s: %s", self.id, "cancelled" if self.cancelled else

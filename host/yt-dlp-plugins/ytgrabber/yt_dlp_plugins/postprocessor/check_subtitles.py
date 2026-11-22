@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
-from yt_dlp.utils import ISO639Utils, PostProcessingError
+from yt_dlp.utils import ExtractorError, ISO639Utils, PostProcessingError
 
 
 class CheckSubtitlesPP(FFmpegPostProcessor):
@@ -18,7 +18,8 @@ class CheckSubtitlesPP(FFmpegPostProcessor):
                    and code not in selected]
         if missing or not selected:
             message = "Selected subtitles unavailable" if self.language == "en" else "Выбранные субтитры недоступны"
-            raise PostProcessingError(f"{message}: {', '.join(missing or requested)}")
+            # yt-dlp can continue downloading after a preprocessing PostProcessingError.
+            raise ExtractorError(f"{message}: {', '.join(missing or requested)}", expected=True)
 
         if self.output == "embed":
             streams = self.get_metadata_object(info["filepath"], ["-select_streams", "s"])["streams"]

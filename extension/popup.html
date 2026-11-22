@@ -78,6 +78,7 @@
         <label class="switch"><input type="checkbox" id="optSubs"><span></span> <b data-i18n="subtitles"></b></label>
         <div class="chips small" id="subLangChips"></div>
       </div>
+      <div id="subStatus" role="status" class="muted" hidden></div>
 
       <div class="folder-row">
         <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4l2 2h7A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg>
@@ -175,19 +176,11 @@
   <main id="tab-jobs" class="pane" hidden>
     <section>
       <div class="section-head">
-        <h3 data-i18n="active"></h3>
-        <button id="clearFinished" class="link-btn" data-i18n="clearFinished"></button>
-      </div>
-      <div id="jobsList" class="list"></div>
-      <div id="jobsEmpty" class="empty small" data-i18n="jobsEmpty"></div>
-    </section>
-    <section>
-      <div class="section-head">
-        <h3 data-i18n="recent"></h3>
+        <h3 data-i18n="tabJobs"></h3>
         <input id="historySearch" type="search" data-i18n-placeholder="search" class="mini-search">
       </div>
-      <div id="historyList" class="list"></div>
-      <div id="historyEmpty" class="empty small" data-i18n="historyEmpty"></div>
+      <div id="jobsList" class="list"></div>
+      <div id="jobsEmpty" class="empty small"></div>
     </section>
   </main>
 

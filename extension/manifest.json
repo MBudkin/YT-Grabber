@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "short_name": "YT Grabber",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApz+qX1kXtwM0Vs8n/lowJgt9CEoc05Ronjcv4RVVP3QNL2w6tvDHA7+f0hNY9bvEjOA3ggX1CQxzdm02Pp36z32BnR/BK9PzXN8kGiUu+TRNFnN3uWagbi9gCsS8Qmlx2ijOItwOW0hqEbGHI+AJhxyAu+o5n82jb5wsqTSstFq5nCQrR1THTubMyetpTZQcRyt9d1gnipeLqbVdSGGQITsxmtbxFVM2armyImmBAW9gYkr3KMRevGUWJj//f2/4YPo9TF6D4oY8h1o+hYIBN/S1LzaEonvRewbnt3Ohgm2ZQO8PD1ZxoEoVDIk1304uW5TdHcsZNiFVYilwSCYJ3wIDAQAB",
