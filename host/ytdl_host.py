@@ -74,6 +74,7 @@ MAX_UPDATE_BYTES = 600 * 1024 * 1024
 MAX_UNPACKED_BYTES = 1536 * 1024 * 1024
 UPDATE_HOSTS = ("github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com")
 EN = {
+    "Выберите язык субтитров": "Select a subtitle language",
     "Некорректная конфигурация": "Invalid configuration",
     "HTTP 403. Повторно запрашиваем ссылки на медиапотоки.": "HTTP 403. Requesting fresh media URLs.",
     "maxConcurrent должен быть положительным целым числом": "maxConcurrent must be a positive integer",
@@ -239,8 +240,8 @@ def metadata(data):
     result["heights"] = sorted({f["height"] for f in formats if f.get("height")
                                 and f.get("vcodec") != "none"}, reverse=True)
     result["formats"] = []
-    for f in formats[-80:]:
-        row = fields(f, "format_id ext height width fps vcodec acodec abr tbr format_note dynamic_range")
+    for f in formats:
+        row = fields(f, "format_id ext height width fps vcodec acodec abr vbr tbr format_note dynamic_range")
         row["filesize"] = f.get("filesize") or f.get("filesize_approx")
         result["formats"].append(row)
     for key, name in (("subtitles", "subtitles"), ("automatic_captions", "autoCaptions")):
@@ -332,6 +333,8 @@ def media_command(config):
     exe = ytdlp_executable(config)
     args = [exe, "--ignore-config"]
     plugins = HOME / "bin" / "yt-dlp-plugins"
+    if not plugins.is_dir():
+        plugins = HOME / "yt-dlp-plugins"
     if Path(exe).parent != plugins.parent and plugins.is_dir():
         args += ["--plugin-dirs", str(plugins)]
     if JS_RUNTIME.is_file():
@@ -345,16 +348,33 @@ def media_command(config):
 def argv(config, url, opts, work):
     get = opts.get
     container = get("container") or "mp4"
-    mode = get("mode") or "video"
+    fmt = get("formatId")
+    mode = "custom" if fmt else get("mode") or "video"
+    subs = get("subtitles") or {}
+    langs = subs.get("langs") or []
+    template = filename_template(get("filenameTemplate") or "%(title)s [%(id)s].%(ext)s")
+    variants = []
+    if mode != "audio":
+        variants.append("%(height&{}p|original)s")
+        if mode == "video_only":
+            variants.append("video-only")
+    embed = subs.get("embed") and mode != "audio"
+    if subs.get("enabled"):
+        if not langs:
+            raise ValueError(tr("Выберите язык субтитров"))
+        codes = ",".join(sorted(set(langs)))
+        label = codes if re.fullmatch(r"[A-Za-z0-9,_-]{1,64}", codes) else hashlib.sha256(codes.encode()).hexdigest()[:12]
+        variants.append(("subs-" if embed else "sidecar-") + label)
+    if variants:
+        suffix = re.search(r"(?:\.%\(ext\)s|\.[A-Za-z0-9]{1,8})$", template)
+        split = suffix.start() if suffix else len(template)
+        template = f"{template[:split]} [{' '.join(variants)}]{template[split:]}"
     args = media_command(config) + ["--newline", "--no-colors", "--encoding", "utf-8",
             "--print", "after_move:__F__%(filepath)j", "--print", "after_move:__T__%(title)j",
             "--no-simulate", "--no-quiet", "--progress",
             "--progress-template", PROGRESS, "-P", str(work.parent), "-P", "temp:" + str(work),
-            "-o", filename_template(get("filenameTemplate") or "%(title)s [%(id)s].%(ext)s")]
-    fmt = get("formatId")
-    if fmt:
-        mode = "custom"
-    else:
+            "-o", template]
+    if not fmt:
         quality = get("quality", "best")
         height = "" if quality in ("best", "", None) else "[height<=" + str(int(quality)) + "]"
         fmt = {"audio": "ba/b", "video_only": "bv" + height,
@@ -367,24 +387,26 @@ def argv(config, url, opts, work):
         args += ["--merge-output-format", container]
         if mode != "custom":
             args += ["--remux-video", container]
-        sort = []
+        sort = ["res"]
         if container == "mp4" and get("preferCompat", True):
             sort.append("vcodec:h264")
         if not get("fps60", True):
             sort.append("fps:30")
-        sort.append("res")
         if container == "mp4" and get("preferCompat", True):
             sort.append("acodec:m4a")
         args += ["-S", ",".join(sort)]
-    subs = get("subtitles") or {}
     if subs.get("enabled"):
         args += ["--write-subs", "--sleep-subtitles", "5",
-                 "--sub-langs", ",".join(subs.get("langs") or ["en"])]
+                 "--sub-langs", ",".join(langs)]
+        lang = "en" if getattr(LOCAL, "lang", "ru") == "en" else "ru"
+        args += ["--use-postprocessor", f"CheckSubtitles:when=pre_process;language={lang}",
+                 "--use-postprocessor", f"CheckSubtitles:when=after_move;language={lang};output={'embed' if embed else 'sidecar'}"]
         if subs.get("auto"):
             args.append("--write-auto-subs")
-        if subs.get("format"):
-            args += ["--convert-subs", subs["format"]]
-        if subs.get("embed") and mode != "audio" and container in ("mp4", "mkv"):
+        sub_format = "vtt" if embed and container == "webm" else subs.get("format")
+        if sub_format:
+            args += ["--convert-subs", sub_format]
+        if embed:
             args.append("--embed-subs")
     for option, flag, default in [
         ("embedThumbnail", "--embed-thumbnail", False), ("splitChapters", "--split-chapters", False),

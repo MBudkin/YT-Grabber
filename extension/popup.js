@@ -313,24 +313,34 @@ function advancedCount() {
 }
 
 function estimateSize() {
-  if (!info?.formats || opts.formatId || opts.playlist) return null;
-  const f = info.formats;
-  const size = x => x.filesize || 0;
-  const bestAudio = f.filter(x => x.vcodec === "none" && x.acodec !== "none").sort((a, b) => (b.abr || 0) - (a.abr || 0))[0];
-  if (opts.mode === "audio") return bestAudio ? size(bestAudio) : null;
-  const cap = opts.quality === "best" ? Infinity : opts.quality;
-  let vids = f.filter(x => x.vcodec !== "none" && x.height && x.height <= cap && (opts.fps60 || (x.fps || 30) <= 30));
-  if (opts.preferCompat && opts.container === "mp4") {
-    const avc = vids.filter(x => /^avc/.test(x.vcodec || ""));
-    if (avc.length) vids = avc;
+  if (!info?.formats || info.is_live || opts.section.start || opts.section.end) return null;
+  const formats = info.formats;
+  const size = f => f && (f.filesize || (info.duration * (f.tbr || (f.vcodec === "none" ? f.abr : f.vbr)) * 125)) || null;
+  const compat = opts.container === "mp4" && opts.preferCompat;
+  const audio = formats.filter(f => f.vcodec === "none" && f.acodec !== "none");
+  const bestAudio = (compat && opts.mode !== "audio" && audio.filter(f => f.ext === "m4a").at(-1)) || audio.at(-1);
+  const combinedSize = video => size(video) && size(bestAudio) ? size(video) + size(bestAudio) : null;
+  if (opts.formatId) {
+    const [id, addAudio] = opts.formatId.split("+");
+    const chosen = formats.find(f => f.format_id === id);
+    return addAudio ? combinedSize(chosen) : size(chosen);
   }
-  vids.sort((a, b) => (b.height - a.height) || ((b.tbr || 0) - (a.tbr || 0)));
-  const v = vids[0];
-  if (!v) return null;
-  let total = size(v);
-  if (opts.mode !== "video_only" && v.acodec === "none" && bestAudio) total += size(bestAudio);
-  if (opts.section.start || opts.section.end) return null;
-  return total || null;
+  if (opts.mode === "audio") {
+    if (opts.audioFormat === "best") return size(bestAudio);
+    const bitrate = /^(\d+)K$/i.exec(opts.audioQuality);
+    return bitrate && info.duration ? Number(bitrate[1]) * 125 * info.duration : null;
+  }
+  const cap = opts.quality === "best" ? Infinity : opts.quality;
+  const videos = formats.filter(f => f.vcodec !== "none" && f.height > 0 && f.height <= cap);
+  const separate = videos.filter(f => f.acodec === "none");
+  const candidates = opts.mode === "video_only" || (separate.length && bestAudio)
+    ? separate : videos.filter(f => f.acodec !== "none");
+  // yt-dlp returns formats in ascending preference. Retain that order for ties.
+  candidates.sort((a, b) => a.height - b.height ||
+    (compat && Number(/^avc|^h264/.test(a.vcodec)) - Number(/^avc|^h264/.test(b.vcodec))) ||
+    (!opts.fps60 && Number(a.fps <= 30) - Number(b.fps <= 30)));
+  const video = candidates.at(-1);
+  return video?.acodec === "none" && opts.mode !== "video_only" ? combinedSize(video) : size(video);
 }
 
 function updateDownloadBtn() {
